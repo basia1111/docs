@@ -15,16 +15,7 @@
       },
       {
         "group": "Cleeng API 3.1 — curated",
-        "pages": [
-          {
-            "group": "Concepts",
-            "pages": ["concepts/response-envelope", "concepts/errors"]
-          },
-          {
-            "group": "Endpoints",
-            "openapi": "/api-reference/openapi.yaml"
-          }
-        ]
+        "openapi": "/api-reference/openapi.yaml"
       },
       {
         "group": "Cleeng API 3.1 — full",
