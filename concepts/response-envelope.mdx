@@ -1,0 +1,26 @@
+---
+title: "Response envelope"
+description: "The common success / data / message wrapper"
+---
+
+Most 3.1 endpoints wrap their payload in a common envelope:
+
+```json
+{
+  "success": true,
+  "data": { "...": "..." },
+  "message": "Customer fetched successfully"
+}
+```
+
+| Field | Type | Meaning |
+|---|---|---|
+| `success` | boolean | Whether the operation succeeded |
+| `data` | object \| null | The resource; `null` on failure. Some endpoints use a domain key (`order`, `payment`) instead |
+| `message` | string | Human-readable outcome |
+
+<Note>
+**Exceptions:** offer search returns a *bare array* (count in the
+`X-Total-Count` header), and some `400` responses return a plain
+`{ "message": "..." }` without the envelope. Check each endpoint.
+</Note>

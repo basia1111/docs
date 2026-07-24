@@ -1,55 +1,33 @@
-# Mintlify Starter Kit
+# Cleeng docs - Mintlify demo repo
 
-Use the starter kit to get your docs deployed and ready to customize.
+Same content as the Redocly demo, adapted to Mintlify conventions:
+docs.json config, .mdx pages, spec at api-reference/openapi.yaml.
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+## Setup
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+1. Push this repo to GitHub (main).
+2. dashboard.mintlify.com -> create project -> connect this repo
+   (installs the Mintlify GitHub App).
+3. Deploys on every push to main; PRs get preview deployments.
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+Local preview: `npx mint dev` in the repo root.
+Spec validation: `npx mint openapi-check api-reference/openapi.yaml`
 
-## AI-assisted writing
+## Structure notes (differences vs Redocly worth observing)
 
-Set up your AI coding tool to work with Mintlify:
+- Tab "API 3.1 (curated)": Concepts are standalone MDX pages placed in
+  the SAME tab as the generated endpoints - test whether guides and
+  endpoints can interleave (they could not in Redocly).
+- Tab "API 3.1 (as-is)": spec loaded directly from
+  https://cleeng.com/3.1/docs via URL in docs.json - observe refresh
+  behavior (when does Mintlify re-fetch?) for the sync row of the sheet.
+- The spec still contains x-tagGroups / x-traitTag / x-displayName from
+  the Redocly test - observe which of these Mintlify honors or ignores
+  (expected: grouping by plain tags; trait tags may render oddly or
+  be dropped - note it either way).
 
-```bash
-npx skills add https://mintlify.com/docs
-```
+## Tests
 
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
-
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
-
-```
-npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
-mint dev
-```
-
-View your local preview at `http://localhost:3000`.
-
-## Publishing changes
-
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
-
-## Need help?
-
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)
+- Sync: bump MINTLIFY LANE MARKER in api-reference/openapi.yaml, push, time it
+- PR preview: change any .mdx on a branch, open PR, find preview URL
+- Failure: break the spec, push - does anything block?

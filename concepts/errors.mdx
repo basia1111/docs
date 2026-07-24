@@ -1,0 +1,23 @@
+---
+title: "Errors"
+description: "Status codes and common rejection scenarios"
+---
+
+## Status codes
+
+| Code | Meaning | Typical cause |
+|---|---|---|
+| `400` | Malformed request | Invalid identifier format, missing parameter |
+| `401` | Unauthorized | Missing or invalid `X-Publisher-Token` |
+| `404` | Not found | Resource does not exist |
+| `412` | Precondition failed | `If-Match` version mismatch (offers only) |
+| `422` | Unprocessable | Valid request, wrong state — see below |
+
+## Common `422` scenarios
+
+| Endpoint | Rejected when |
+|---|---|
+| `POST /customers` | Email or `externalId` already exists |
+| `DELETE /customers/{id}` | Customer still has an active subscription |
+| `POST /subscriptions/{id}/pause` | Trial, pass, or pause disabled on the offer |
+| `PATCH /payments/{id}` | Refund exceeds original amount |

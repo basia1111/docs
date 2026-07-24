@@ -1,0 +1,33 @@
+---
+title: "About the Cleeng API"
+description: "Authentication, environments, and response conventions"
+---
+
+The Cleeng API 3.1 covers subscriber management and monetization:
+customers, offers, orders, payments, subscriptions, and entitlements.
+
+## Authentication
+
+All endpoints require a **publisher token** sent with every request:
+
+```bash
+curl "https://api.cleeng.com/3.1/customers?email=jane@example.com" \
+  -H "X-Publisher-Token: <your-publisher-token>"
+```
+
+Requests without a valid token return `401 Unauthorized`.
+
+## Environments
+
+| Environment | Base URL |
+|---|---|
+| Sandbox | `https://api.sandbox.cleeng.com` |
+| Production | `https://api.cleeng.com` |
+
+Use separate tokens per environment; data does not move between them.
+
+## Response conventions
+
+Most endpoints wrap responses in a `success` / `data` / `message`
+envelope — see [Response envelope](/concepts/response-envelope) for the
+full pattern and exceptions.

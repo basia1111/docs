@@ -1,72 +1,44 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Cleeng Docs (Mintlify demo)",
   "colors": {
     "primary": "#16A34A",
-    "light": "#07C983",
+    "light": "#4ADE80",
     "dark": "#15803D"
   },
-  "favicon": "/favicon.svg",
   "navigation": {
-    "pages": [
+    "tabs": [
       {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": ["index", "guides/about-the-api"]
+          },
+          {
+            "group": "Updates",
+            "pages": ["whats-new"]
+          }
         ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
+      },
       {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "tab": "API 3.1 (curated)",
+        "groups": [
+          {
+            "group": "Concepts",
+            "pages": ["concepts/response-envelope", "concepts/errors"]
+          },
+          {
+            "group": "Endpoints",
+            "openapi": "/api-reference/openapi.yaml"
+          }
+        ]
+      },
+      {
+        "tab": "API 3.1 (as-is)",
+        "openapi": "https://cleeng.com/3.1/docs"
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
     ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
   }
 }

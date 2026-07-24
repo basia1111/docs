@@ -1,0 +1,881 @@
+openapi: 3.1.0
+info:
+  title: Cleeng API 3.1 (mini)
+  version: 1.0.0
+  description: |
+    Trimmed subset of the Cleeng API 3.1 used for testing spec-sync workflows
+    in Redocly Reunite. Keeps the real API's shapes: publisher-token auth, the
+    `success` / `data` / `message` envelope, `allOf` composition, ETag-based
+    optimistic locking on offers, and subscription lifecycle actions.
+
+    **MINTLIFY LANE MARKER: v1 — edit this line and commit to test propagation.**
+  contact:
+    name: Docs Team
+    email: docs@example.com
+  license:
+    name: Proprietary
+    url: https://cleeng.com
+servers:
+  - url: https://api.sandbox.cleeng.com
+    description: Sandbox
+  - url: https://api.cleeng.com
+    description: Production
+security:
+  - publisherToken: []
+tags:
+  - name: Response envelope
+    x-traitTag: true
+    description: |
+      Most 3.1 endpoints wrap their payload in a common envelope:
+
+      ```json
+      {
+        "success": true,
+        "data": { "...": "..." },
+        "message": "Customer fetched successfully"
+      }
+      ```
+
+      | Field | Type | Meaning |
+      |---|---|---|
+      | `success` | boolean | Whether the operation succeeded |
+      | `data` | object \| null | The resource; `null` on failure. Some endpoints use a domain key (`order`, `payment`) instead |
+      | `message` | string | Human-readable outcome |
+
+      > **Exceptions:** offer search returns a *bare array* (count in the
+      > `X-Total-Count` header), and some `400` responses return a plain
+      > `{ "message": "..." }` without the envelope. Check each endpoint.
+  - name: Errors
+    x-traitTag: true
+    description: |
+      ## Status codes
+
+      | Code | Meaning | Typical cause |
+      |---|---|---|
+      | `400` | Malformed request | Invalid identifier format, missing parameter |
+      | `401` | Unauthorized | Missing or invalid `X-Publisher-Token` |
+      | `404` | Not found | Resource does not exist |
+      | `412` | Precondition failed | `If-Match` version mismatch (offers only) |
+      | `422` | Unprocessable | Valid request, wrong state — see table below |
+
+      ## Common `422` scenarios
+
+      | Endpoint | Rejected when |
+      |---|---|
+      | `POST /customers` | Email or `externalId` already exists |
+      | `DELETE /customers/{id}` | Customer still has an active subscription |
+      | `POST /subscriptions/{id}/pause` | Trial, pass, or pause disabled on the offer |
+      | `PATCH /payments/{id}` | Refund exceeds original amount |
+  - name: Customers
+    x-displayName: Customers & identity
+    description: |
+      Customers represent the end users of your service.
+
+      ## Identifiers
+
+      Every customer carries several identifiers with different purposes:
+
+      | Identifier | Format | Assigned by | Use for |
+      |---|---|---|---|
+      | `id` | 9-digit integer (`100000000`–`999999999`) | Cleeng | All API calls |
+      | `email` | RFC 5322, unique per publisher | you | Search, login |
+      | `externalId` | free string ≤ 100 chars, unique | you | CRM correlation |
+      | identity pair | `identityProvider` + `identityId` | IdP | Social-login lookups |
+
+      ## Search rules
+
+      `GET /3.1/customers` requires **at least one** criterion:
+
+      1. `email` — exact match
+      2. `externalId` — exact match
+      3. `identityProvider` **and** `identityId` — must be sent *together*
+
+      ```bash
+      curl "https://api.cleeng.com/3.1/customers?externalId=crm-12345" \
+        -H "X-Publisher-Token: $TOKEN"
+      ```
+
+      > ⚠️ The token returned by `POST /3.1/customers` authenticates the
+      > customer. Never log it or expose it client-side.
+  - name: Subscriptions
+    description: |
+      Subscription lifecycle actions. Valid state transitions:
+
+      | From ↓ / To → | active | cancelled | paused | terminated |
+      |---|---|---|---|---|
+      | **active** | — | `/cancel` | `/pause` | `/terminate` |
+      | **cancelled** | `/activate` | — | ✗ | `/terminate` |
+      | **paused** | `/resume` | ✗ | — | `/terminate` |
+      | **terminated** | `/revive`\* | ✗ | ✗ | — |
+
+      \* `/revive` requires a new expiration date and returns `422` if the
+      referenced payment is not found for the customer.
+  - name: Offers
+    description: |
+      Offers and their activation state.
+
+      The **first letter of the offer ID encodes its type**:
+      `S` subscription · `P` pass · `A` single purchase · `R` rental —
+      e.g. `S123456789_US`.
+
+      Reads and writes support optimistic locking:
+      - `GET` returns the current version in the `ETag` header
+      - send it back via `If-None-Match` (reads) or `If-Match` (writes)
+      - a stale `If-Match` is rejected with `412 Precondition Failed`
+  - name: Orders
+    description: Orders created for offers during checkout.
+  - name: Payments
+    description: Payments made against orders.
+  - name: Entitlements
+    description: Access checks for customers and offers.
+x-tagGroups:
+  - name: Concepts
+    tags:
+      - Response envelope
+      - Errors
+  - name: Accounts
+    tags:
+      - Customers
+      - Entitlements
+  - name: Monetization
+    tags:
+      - Offers
+      - Orders
+      - Payments
+      - Subscriptions
+paths:
+  /3.1/customers:
+    get:
+      operationId: listCustomers
+      tags: [Customers]
+      summary: List customers
+      description: >
+        Returns customers matching the supplied search criteria as a paginated
+        list. At least one of `email` or `externalId` is required.
+      parameters:
+        - name: email
+          in: query
+          description: Filter by customer email.
+          schema:
+            type: string
+        - name: externalId
+          in: query
+          description: Filter by publisher-assigned external identifier.
+          schema:
+            type: string
+        - name: offset
+          in: query
+          description: Number of customers to skip.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          description: Maximum number of customers to return (1-200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 10
+      responses:
+        '200':
+          description: Customers fetched (success=true); data holds the page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomersListEnvelope'
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: No usable search criteria were provided.
+    post:
+      operationId: createCustomer
+      tags: [Customers]
+      summary: Create a customer
+      description: >
+        Creates a new customer and issues an authentication token for it.
+        Treat the returned token as a secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreateInput'
+      responses:
+        '201':
+          description: Customer created (success=true).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerEnvelope'
+        '400':
+          description: The request body failed validation.
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: Email or externalId already exists.
+  /3.1/customers/{customerId}:
+    get:
+      operationId: getCustomer
+      tags: [Customers]
+      summary: Get a customer by ID
+      description: Returns a single customer by its numeric Cleeng identifier.
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+      responses:
+        '200':
+          description: Customer found (success=true, data populated).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerEnvelope'
+        '400':
+          description: customerId is not a valid 9-digit identifier.
+        '401':
+          description: Missing or invalid publisher token.
+        '404':
+          description: No customer with this id exists.
+    patch:
+      operationId: updateCustomer
+      tags: [Customers]
+      summary: Update a customer by ID
+      description: Merge-patch update; only the supplied fields are changed.
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: '#/components/schemas/CustomerPatchInput'
+      responses:
+        '200':
+          description: Customer updated (success=true).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerEnvelope'
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: Email or externalId already taken.
+  /3.1/entitlements/customer_id/{customerId}/offer_id/{offerId}:
+    get:
+      operationId: checkEntitlement
+      tags: [Entitlements]
+      summary: Check a customer's entitlement to an offer
+      description: >
+        Returns whether the customer currently has active access to the offer,
+        via subscription, one-time purchase, or content ownership.
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+        - name: offerId
+          in: path
+          required: true
+          description: Cleeng offer identifier, e.g. S123456789_US.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Entitlement check completed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntitlementCheck'
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: The offer or the customer does not exist.
+  /3.1/subscriptions/{subscriptionId}:
+    get:
+      operationId: getSubscription
+      tags: [Subscriptions]
+      summary: Get subscription by ID
+      description: Returns the subscription identified by subscriptionId.
+      parameters:
+        - $ref: '#/components/parameters/subscriptionId'
+      responses:
+        '200':
+          description: Subscription found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResource'
+        '401':
+          description: Missing or invalid publisher token.
+        '404':
+          description: No subscription with the given id exists.
+  /3.1/subscriptions/{subscriptionId}/cancel:
+    post:
+      operationId: cancelSubscription
+      tags: [Subscriptions]
+      summary: Cancel subscription
+      description: Cancels the subscription; access remains until expiry.
+      parameters:
+        - $ref: '#/components/parameters/subscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cancellationReason]
+              properties:
+                cancellationReason:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+                  description: Why the subscription is being cancelled.
+                  example: Too expensive
+      responses:
+        '200':
+          description: Subscription cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResource'
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: Not cancellable (e.g. a Pass, or not active).
+  /3.1/subscriptions/{subscriptionId}/pause:
+    post:
+      operationId: pauseSubscription
+      tags: [Subscriptions]
+      summary: Schedule subscription pause
+      description: >
+        Schedules the subscription to pause and resume after the given number
+        of billing cycles.
+      parameters:
+        - $ref: '#/components/parameters/subscriptionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pauseDate, resumesAfterBillingCycles]
+              properties:
+                pauseDate:
+                  type: integer
+                  description: Unix timestamp at which the pause starts.
+                  example: 1767225600
+                resumesAfterBillingCycles:
+                  type: integer
+                  minimum: 1
+                  description: Billing cycles to stay paused.
+                  example: 2
+      responses:
+        '200':
+          description: Pause scheduled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResource'
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: Not pausable (trial, pass, externally managed, disabled on offer).
+  /3.1/offers:
+    get:
+      operationId: searchOffers
+      tags: [Offers]
+      summary: Search offers
+      description: >
+        Returns offers matching the given filters as a bare paginated array.
+        The total match count is returned in the `X-Total-Count` header.
+      parameters:
+        - name: search
+          in: query
+          description: Case-insensitive phrase matched against offer title.
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by activation state.
+          schema:
+            type: string
+            enum: [active, inactive, all]
+        - name: type
+          in: query
+          description: Filter by offer type.
+          schema:
+            type: string
+            enum: [subscription, pass, vod, live]
+      responses:
+        '200':
+          description: Matching offers (possibly an empty array).
+          headers:
+            X-Total-Count:
+              description: Total matching offers across all pages.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OfferSearchResult'
+        '401':
+          description: Missing or invalid publisher token.
+  /3.1/offers/{offerId}:
+    get:
+      operationId: getOffer
+      tags: [Offers]
+      summary: Get an offer
+      description: >
+        Returns a single offer. Supports conditional requests via
+        `If-None-Match`; the `ETag` response header carries the offer version.
+      parameters:
+        - name: offerId
+          in: path
+          required: true
+          description: Cleeng offer identifier, e.g. S123456789_US.
+          schema:
+            type: string
+        - name: If-None-Match
+          in: header
+          required: false
+          description: Previously seen offer version.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Offer found; ETag header carries the current version.
+          headers:
+            ETag:
+              description: Current offer version.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Offer'
+        '304':
+          description: Offer unchanged since the supplied version.
+        '401':
+          description: Missing or invalid publisher token.
+        '404':
+          description: No offer with this id exists.
+  /3.1/orders:
+    post:
+      operationId: createOrder
+      tags: [Orders]
+      summary: Create an order for an offer
+      description: >
+        Creates a new order for the given offer and customer and returns the
+        pricing breakdown.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [offerId, customerId]
+              properties:
+                offerId:
+                  type: string
+                  description: Offer to purchase.
+                  example: S123456789_US
+                customerId:
+                  type: integer
+                  description: Purchasing customer.
+                  example: 100000001
+                couponCode:
+                  type: string
+                  description: Optional coupon to apply.
+                  example: SPRING20
+      responses:
+        '201':
+          description: Order created (success=true, order populated).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderEnvelope'
+        '400':
+          description: Request body failed validation.
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: Offer not found or coupon invalid.
+  /3.1/payments/{paymentId}:
+    get:
+      operationId: getPayment
+      tags: [Payments]
+      summary: Get a single payment by ID
+      description: Returns a payment identified by its Cleeng payment id.
+      parameters:
+        - $ref: '#/components/parameters/paymentId'
+      responses:
+        '200':
+          description: Payment found (success=true, data populated).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentEnvelope'
+        '401':
+          description: Missing or invalid publisher token.
+        '404':
+          description: No payment with the given id was found.
+    patch:
+      operationId: updatePayment
+      tags: [Payments]
+      summary: Update a payment
+      description: >
+        Captures, rejects, or refunds a payment. Refunding a free payment or
+        exceeding the original amount is rejected.
+      parameters:
+        - $ref: '#/components/parameters/paymentId'
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [capture, reject, refund]
+                  description: Operation to apply to the payment.
+                  example: refund
+                refundAmount:
+                  type: number
+                  description: Amount to refund; must not exceed the original.
+                  example: 9.99
+      responses:
+        '200':
+          description: Payment updated (success=true).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentEnvelope'
+        '401':
+          description: Missing or invalid publisher token.
+        '422':
+          description: The update cannot be applied in the current state.
+components:
+  securitySchemes:
+    publisherToken:
+      type: apiKey
+      in: header
+      name: X-Publisher-Token
+      description: Publisher API token. Required on all endpoints.
+  parameters:
+    customerId:
+      name: customerId
+      in: path
+      required: true
+      description: Numeric Cleeng customer identifier (9 digits).
+      schema:
+        type: integer
+        minimum: 100000000
+        maximum: 999999999
+    subscriptionId:
+      name: subscriptionId
+      in: path
+      required: true
+      description: Numeric Cleeng subscription identifier.
+      schema:
+        type: integer
+    paymentId:
+      name: paymentId
+      in: path
+      required: true
+      description: Numeric Cleeng payment identifier.
+      schema:
+        type: integer
+  schemas:
+    Envelope:
+      type: object
+      description: Common response envelope used by most 3.1 endpoints.
+      properties:
+        success:
+          type: boolean
+          description: Whether the operation succeeded.
+          example: true
+        message:
+          type: string
+          description: Human-readable status message.
+          example: Fetched successfully
+    CustomerResource:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Numeric identifier of the customer.
+          example: 123456789
+        email:
+          type: string
+          description: Customer email address.
+          example: customer@example.com
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code.
+          example: US
+        currency:
+          type: string
+          description: ISO 4217 billing currency.
+          example: EUR
+        locale:
+          type: string
+          description: Customer locale.
+          example: en_US
+        externalId:
+          type: string
+          description: Publisher-defined external identifier.
+          example: crm-12345
+    CustomerEnvelope:
+      description: Envelope carrying a single customer in `data`.
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              oneOf:
+                - $ref: '#/components/schemas/CustomerResource'
+                - type: 'null'
+              description: The customer, or null on failure.
+    CustomersListEnvelope:
+      description: Envelope carrying a page of customers in `data`.
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/CustomerResource'
+              description: The matching customers for the requested page.
+            nextPage:
+              type: boolean
+              description: Whether more customers exist beyond this page.
+              example: false
+    CustomerCreateInput:
+      type: object
+      required: [email, locale, country, currency]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email of the customer to create. Must be unique.
+          example: customer@example.com
+        locale:
+          type: string
+          description: Supported language/region tag.
+          example: en_US
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 code.
+          example: US
+        currency:
+          type: string
+          description: ISO 4217 code available for registration.
+          example: EUR
+        externalId:
+          type: string
+          maxLength: 100
+          description: Publisher-defined unique identifier.
+          example: crm-12345
+    CustomerPatchInput:
+      type: object
+      description: All fields optional; only supplied fields are changed.
+      properties:
+        email:
+          type: string
+          format: email
+          description: New email address. Must be unique.
+          example: new@example.com
+        locale:
+          type: string
+          description: New locale.
+          example: pl_PL
+        externalId:
+          type: string
+          description: New external identifier. Must be unique.
+          example: crm-99999
+    EntitlementCheck:
+      type: object
+      properties:
+        customerId:
+          type: integer
+          description: Customer the check was run for.
+          example: 222222223
+        accessGranted:
+          type: boolean
+          description: Whether the customer currently has active access.
+          example: true
+        grantType:
+          type: string
+          enum: [ownership, direct-purchase, subscription]
+          description: How access was granted, when granted.
+          example: subscription
+        expiresAt:
+          type: integer
+          description: Unix timestamp at which access expires; 0 when n/a.
+          example: 1735689600
+        message:
+          type: string
+          description: Human-readable status message.
+          example: Success
+    SubscriptionResource:
+      type: object
+      properties:
+        subscriptionId:
+          type: integer
+          description: Numeric subscription identifier.
+          example: 100000123
+        customerId:
+          type: integer
+          description: Owning customer.
+          example: 100000001
+        offerId:
+          type: string
+          description: Subscribed offer.
+          example: S123456789_US
+        status:
+          type: string
+          enum: [active, cancelled, paused, terminated]
+          description: Current lifecycle state.
+          example: active
+        expiresAt:
+          type: integer
+          description: Unix timestamp of the current period end.
+          example: 1767225600
+        pendingSwitchId:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: UUID of an in-progress plan switch, if any.
+          example: null
+    Offer:
+      type: object
+      properties:
+        id:
+          type: string
+          description: >
+            Offer identifier; the first letter encodes the type
+            (S subscription, P pass, A single purchase, R rental).
+          example: S123456789_US
+        title:
+          type: string
+          description: Offer title.
+          example: Monthly Premium
+        active:
+          type: boolean
+          description: Whether the offer is active.
+          example: true
+        price:
+          type: number
+          description: Net price before tax.
+          example: 9.99
+        currency:
+          type: string
+          description: ISO 4217 currency.
+          example: USD
+        period:
+          type: string
+          enum: [week, month, 3months, 6months, year]
+          description: Billing period for subscription offers.
+          example: month
+    OfferSearchResult:
+      type: object
+      description: Lightweight projection of an offer returned by search.
+      properties:
+        id:
+          type: string
+          description: Offer identifier.
+          example: S123456789_US
+        title:
+          type: string
+          description: Offer title.
+          example: Monthly Premium
+        active:
+          type: boolean
+          description: Whether the offer is active.
+          example: true
+    OrderResource:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Numeric order identifier.
+          example: 987654321
+        offerId:
+          type: string
+          description: Ordered offer.
+          example: S123456789_US
+        customerId:
+          type: integer
+          description: Purchasing customer.
+          example: 100000001
+        priceBreakdown:
+          type: object
+          description: Pricing components of the order.
+          properties:
+            offerPrice:
+              type: number
+              description: Net offer price.
+              example: 9.99
+            discountAmount:
+              type: number
+              description: Discount applied by coupon or trial.
+              example: 2.0
+            taxValue:
+              type: number
+              description: Tax amount.
+              example: 1.84
+        totalPrice:
+          type: number
+          description: Final amount to charge.
+          example: 9.83
+    OrderEnvelope:
+      description: Envelope carrying the created order in `order`.
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            order:
+              oneOf:
+                - $ref: '#/components/schemas/OrderResource'
+                - type: 'null'
+              description: The order, or null on failure.
+    PaymentResource:
+      type: object
+      properties:
+        paymentId:
+          type: integer
+          description: Numeric payment identifier.
+          example: 555000111
+        orderId:
+          type: integer
+          description: Order the payment settles.
+          example: 987654321
+        status:
+          type: string
+          enum: [authorised, captured, rejected, refunded, cancelled]
+          description: Current payment state.
+          example: captured
+        amount:
+          type: number
+          description: Payment amount.
+          example: 9.83
+        currency:
+          type: string
+          description: ISO 4217 currency.
+          example: USD
+        externalId:
+          type: string
+          description: Gateway-side reference (PSP reference, charge id).
+          example: psp_8515131f
+    PaymentEnvelope:
+      description: Envelope carrying a single payment in `data`.
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              oneOf:
+                - $ref: '#/components/schemas/PaymentResource'
+                - type: 'null'
+              description: The payment, or null on failure.
