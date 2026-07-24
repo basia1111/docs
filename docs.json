@@ -1,30 +1,21 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Cleeng Docs (Mintlify demo)",
+  "name": "Cleeng developer documentation",
   "colors": {
     "primary": "#16A34A",
     "light": "#4ADE80",
     "dark": "#15803D"
   },
   "navigation": {
-    "tabs": [
+    "groups": [
       {
-        "tab": "Guides",
-        "groups": [
-          {
-            "group": "Getting started",
-            "pages": ["index", "guides/about-the-api"]
-          },
-          {
-            "group": "Updates",
-            "pages": ["whats-new"]
-          }
-        ]
+        "group": "Getting started",
+        "pages": ["index", "guides/about-the-api"]
       },
       {
-        "tab": "Cleeng API 3.1 — curated",
-        "groups": [
+        "group": "Cleeng API 3.1 — curated",
+        "pages": [
           {
             "group": "Concepts",
             "pages": ["concepts/response-envelope", "concepts/errors"]
@@ -36,8 +27,12 @@
         ]
       },
       {
-        "tab": "Cleeng API 3.1 — full",
+        "group": "Cleeng API 3.1 — full",
         "openapi": "https://cleeng.com/3.1/docs"
+      },
+      {
+        "group": "What's new",
+        "pages": ["whats-new"]
       }
     ]
   }
