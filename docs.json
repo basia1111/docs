@@ -23,7 +23,7 @@
         ]
       },
       {
-        "tab": "API 3.1 (curated)",
+        "tab": "Cleeng API 3.1 — curated",
         "groups": [
           {
             "group": "Concepts",
@@ -36,7 +36,7 @@
         ]
       },
       {
-        "tab": "API 3.1 (as-is)",
+        "tab": "Cleeng API 3.1 — full",
         "openapi": "https://cleeng.com/3.1/docs"
       }
     ]
